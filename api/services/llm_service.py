@@ -9,9 +9,20 @@ Set OPENAI_API_KEY, OPENAI_BASE_URL, and OPENAI_MODEL in your .env file.
 Settings are loaded by ``api.config.Settings``.
 """
 
+import json
+
 from openai import AsyncOpenAI
 
 from api.config import get_settings
+
+ANALYSIS_INSTRUCTIONS = (
+    "You are analyzing a learner's daily journal entry. Respond with a single "
+    "JSON object with exactly these keys: "
+    '"sentiment" (one of "positive", "negative", "neutral"), '
+    '"summary" (a 2 sentence summary of the entry), and '
+    '"topics" (a list of 2-4 key topics mentioned in the entry). '
+    "Respond with JSON only, no other text."
+)
 
 
 def _default_client() -> AsyncOpenAI:
@@ -50,16 +61,22 @@ async def analyze_journal_entry(
                 "topics":    list[str],
             }
 
-    TODO (Task 4):
-      1. If ``client is None``, call ``_default_client()`` to construct one.
-      2. Build an input that includes ``entry_text`` somewhere
-         (the unit tests check that the entry text reaches the LLM).
-      3. Call ``client.responses.create(...)`` with a model name
-         (use ``get_settings().openai_model``).
-      4. Parse ``response.output_text`` with ``json.loads()``.
-      5. Return a dict with ``entry_id``, ``sentiment``, ``summary``, ``topics``.
     """
-    raise NotImplementedError(
-        "Task 4: implement analyze_journal_entry using the openai SDK. "
-        "See tests/test_llm_service.py for the test contract."
+    if client is None:
+        client = _default_client()
+
+    settings = get_settings()
+    response = await client.responses.create(
+        model=settings.openai_model,
+        instructions=ANALYSIS_INSTRUCTIONS,
+        input=f"Journal entry:\n{entry_text}",
     )
+
+    parsed = json.loads(response.output_text)
+
+    return {
+        "entry_id": entry_id,
+        "sentiment": parsed["sentiment"],
+        "summary": parsed["summary"],
+        "topics": parsed["topics"],
+    }
