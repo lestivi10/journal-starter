@@ -270,5 +270,6 @@ class TestAnalyzeEntry:
         response = await test_client.post(f"/entries/{created_entry['id']}/analyze")
 
         # Should return a handled error with a JSON detail message
-        assert response.status_code == 500
-        assert "detail" in response.json()
+        assert response.status_code == 502
+        assert response.json() == {"detail": "Analysis service unavailable"}
+        assert "LLM API key" not in response.text

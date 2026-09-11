@@ -256,3 +256,42 @@ class TestAnalysisResponseModel:
 
         with pytest.raises(ValidationError):
             AnalysisResponse.model_validate(invalid_data)
+
+    @pytest.mark.parametrize("sentiment", ["positive", "negative", "neutral"])
+    def test_valid_sentiments_and_trimmed_text(self, sentiment):
+        response = AnalysisResponse.model_validate(
+            {
+                "entry_id": "entry-1",
+                "sentiment": sentiment,
+                "summary": "  Made progress.  ",
+                "topics": ["  AWS  "],
+            }
+        )
+        assert response.summary == "Made progress."
+        assert response.topics == ["AWS"]
+
+    @pytest.mark.parametrize(
+        "invalid_fields",
+        [
+            {"entry_id": "  "},
+            {"sentiment": "happy"},
+            {"sentiment": "Positive"},
+            {"summary": ""},
+            {"summary": " \n\t "},
+            {"topics": []},
+            {"topics": [""]},
+            {"topics": ["AWS", " \t "]},
+            {"topics": [123]},
+            {"topics": [None]},
+        ],
+    )
+    def test_rejects_invalid_verifier_fields(self, invalid_fields):
+        data = {
+            "entry_id": "entry-1",
+            "sentiment": "positive",
+            "summary": "Made progress.",
+            "topics": ["AWS"],
+        }
+        data.update(invalid_fields)
+        with pytest.raises(ValidationError):
+            AnalysisResponse.model_validate(data)

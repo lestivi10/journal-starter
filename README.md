@@ -459,6 +459,48 @@ This live check is required for local acceptance but is not part of CI. Both
 Microsoft Foundry Models and OpenAI remain supported, provided the selected
 model or deployment supports the OpenAI Responses API.
 
+### Phase 4 application readiness
+
+The application includes the code preparation needed for the AWS deployment:
+
+- `GET /health` returns HTTP 200 and `{"status":"ok"}` without calling the
+  database or AI provider. Configure the load balancer health-check path as
+  `/health`; use CRUD requests separately to prove database connectivity.
+- Analysis uses the configured live Responses API with a 15-second SDK timeout,
+  no automatic retries, and a 20-second overall AI-analysis deadline. SDK and
+  overall timeouts return HTTP 504; provider failures and invalid model output
+  return HTTP 502. Public error messages do not include provider exceptions.
+- Analysis requires a matching entry ID, positive/negative/neutral sentiment,
+  a non-empty summary, and at least one non-empty topic. Failed or incomplete
+  responses are rejected; the application never fabricates a fallback analysis.
+- The live verification helper checks the same contract and deadline, and
+  reports latency without printing raw model output, settings, or exceptions.
+
+These timeout and retry settings follow the
+[OpenAI Python SDK documentation](https://developers.openai.com/api/reference/python#timeouts).
+Keep provider credentials in the ignored `.env` locally and in your cloud
+secret store when deploying. Do not enable verbose SDK logging or commit secrets.
+
+Run checks with Python 3.14 and the locked dependencies:
+
+```bash
+uv sync --locked --all-extras
+uv run ruff check .
+uv run ruff format --check .
+uv run pyright
+uv run pytest
+uv run python -m scripts.verify_llm
+```
+
+**Test database warning:** `pytest` clears the `entries` table before and after
+database tests. Point `DATABASE_URL` at a disposable test database, never at RDS
+or a database containing entries you need. Tests use mocked AI responses;
+`scripts.verify_llm` is the separate, potentially billable live-provider check.
+
+Passing these checks is application preparation only. Public HTTPS, private
+database access, reboot persistence, authenticated administration, and the
+Learn to Cloud verifier must still be demonstrated on the AWS deployment.
+
 > **Phase 4 preview:** In Phase 4, you'll migrate this same code to a
 > cloud AI platform. Providers with a Responses API-compatible endpoint only
 > require environment variable changes; providers without one need an adapter.

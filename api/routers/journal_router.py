@@ -1,12 +1,14 @@
+import asyncio
 from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, Depends, HTTPException
+from openai import APITimeoutError
 
 from api.config import Settings, get_settings
 from api.models.entry import AnalysisResponse, Entry, EntryCreate, EntryUpdate
 from api.repositories.postgres_repository import PostgresDB
 from api.services.entry_service import EntryService
-from api.services.llm_service import analyze_journal_entry
+from api.services.llm_service import ANALYSIS_TIMEOUT_SECONDS, analyze_journal_entry
 
 router = APIRouter()
 
@@ -92,8 +94,7 @@ async def analyze_entry(entry_id: str, entry_service: EntryService = Depends(get
     Analyze a journal entry using AI.
 
     Returns sentiment, summary, key topics, entry_id, and created_at timestamp.
-    The LLM call itself lives in api/services/llm_service.py - implementing
-    analyze_journal_entry there is part of the capstone.
+    The LLM call itself lives in api/services/llm_service.py.
     """
     entry = await entry_service.get_entry(entry_id)
     if entry is None:
@@ -102,11 +103,10 @@ async def analyze_entry(entry_id: str, entry_service: EntryService = Depends(get
     entry_text = f"{entry['work']} {entry['struggle']} {entry['intention']}"
 
     try:
-        return await analyze_journal_entry(entry_id, entry_text)
-    except NotImplementedError as e:
-        raise HTTPException(
-            status_code=501,
-            detail="LLM analysis not yet implemented - see api/services/llm_service.py",
-        ) from e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {e!s}") from e
+        async with asyncio.timeout(ANALYSIS_TIMEOUT_SECONDS):
+            result = await analyze_journal_entry(entry_id, entry_text)
+            return AnalysisResponse.model_validate(result)
+    except TimeoutError, APITimeoutError:
+        raise HTTPException(status_code=504, detail="Analysis timed out") from None
+    except Exception:
+        raise HTTPException(status_code=502, detail="Analysis service unavailable") from None

@@ -1,19 +1,24 @@
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, StringConstraints
 
 JournalText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=256)]
+NonEmptyAnalysisText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
 class AnalysisResponse(BaseModel):
     """Response model for journal entry analysis."""
 
-    entry_id: str = Field(description="ID of the analyzed entry")
-    sentiment: str = Field(description="Sentiment: positive, negative, or neutral")
-    summary: str = Field(description="2 sentence summary of the entry")
-    topics: list[str] = Field(description="2-4 key topics mentioned in the entry")
+    entry_id: NonEmptyAnalysisText = Field(description="ID of the analyzed entry")
+    sentiment: Literal["positive", "negative", "neutral"] = Field(
+        description="Sentiment: positive, negative, or neutral"
+    )
+    summary: NonEmptyAnalysisText = Field(description="2 sentence summary of the entry")
+    topics: list[NonEmptyAnalysisText] = Field(
+        min_length=1, description="Key topics mentioned in the entry (at least one)"
+    )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
         description="Timestamp when the analysis was created",

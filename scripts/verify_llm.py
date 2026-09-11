@@ -1,8 +1,8 @@
 """Required local live verification for Task 4.
 
 Runs ``analyze_journal_entry`` against the real OpenAI client configured
-via environment variables, prints the result, and validates that it
-matches ``AnalysisResponse``.
+via environment variables and validates ``AnalysisResponse`` and the entry ID.
+Prints timing and contract checks, not raw provider output or exceptions.
 
 Usage:
     uv run python -m scripts.verify_llm
@@ -15,14 +15,15 @@ Task 4.
 from __future__ import annotations
 
 import asyncio
-import json
 import sys
+from time import perf_counter
 
+from openai import APITimeoutError
 from pydantic import ValidationError
 
 from api.config import get_settings
 from api.models.entry import AnalysisResponse
-from api.services.llm_service import analyze_journal_entry
+from api.services.llm_service import ANALYSIS_TIMEOUT_SECONDS, analyze_journal_entry
 
 SAMPLE_ENTRY_ID = "verify-llm-sample"
 SAMPLE_ENTRY_TEXT = (
@@ -36,33 +37,41 @@ SAMPLE_ENTRY_TEXT = (
 async def main() -> int:
     try:
         get_settings()
-    except ValidationError as exc:
+    except ValidationError:
         print(
             "ERROR: application settings are invalid. "
             "Check your .env file has DATABASE_URL, OPENAI_API_KEY, "
-            "OPENAI_BASE_URL, and OPENAI_MODEL set.\n"
-            f"{exc}",
+            "OPENAI_BASE_URL, and OPENAI_MODEL set.",
             file=sys.stderr,
         )
         return 1
 
     print(f"Calling analyze_journal_entry for entry_id={SAMPLE_ENTRY_ID!r}...")
-    result = await analyze_journal_entry(SAMPLE_ENTRY_ID, SAMPLE_ENTRY_TEXT)
-
-    print("Raw result:")
-    print(json.dumps(result, indent=2, default=str))
-
+    started = perf_counter()
     try:
-        validated = AnalysisResponse.model_validate(result)
-    except Exception as exc:
-        print(f"ERROR: result does not validate against AnalysisResponse: {exc}", file=sys.stderr)
+        async with asyncio.timeout(ANALYSIS_TIMEOUT_SECONDS):
+            result = await analyze_journal_entry(SAMPLE_ENTRY_ID, SAMPLE_ENTRY_TEXT)
+            validated = AnalysisResponse.model_validate(result)
+        if validated.entry_id != SAMPLE_ENTRY_ID:
+            raise ValueError("Analysis entry ID does not match")
+    except TimeoutError, APITimeoutError:
+        print("ERROR: live analysis timed out. No automatic retry was attempted.", file=sys.stderr)
+        return 3
+    except Exception:
+        print(
+            "ERROR: live analysis failed or returned an invalid response. "
+            "Check provider access, model support, and quota. "
+            "Provider errors and response bodies are intentionally not printed.",
+            file=sys.stderr,
+        )
         return 2
 
-    print("\nValidated AnalysisResponse:")
+    print(f"\nLive analysis passed in {perf_counter() - started:.2f} seconds.")
+    print("Validated contract (model-generated text omitted):")
     print(f"  entry_id:  {validated.entry_id}")
     print(f"  sentiment: {validated.sentiment}")
-    print(f"  summary:   {validated.summary}")
-    print(f"  topics:    {validated.topics}")
+    print(f"  summary:   {len(validated.summary)} characters")
+    print(f"  topics:    {len(validated.topics)} non-empty strings")
     return 0
 
 

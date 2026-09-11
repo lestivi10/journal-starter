@@ -15,4 +15,12 @@ app = FastAPI(
     title="Journal API",
     description="A simple journal API for tracking daily work, struggles, and intentions",
 )
+
+
+@app.get("/health")
+async def health():
+    """Process health for the load balancer; no database or AI call is made."""
+    return {"status": "ok"}
+
+
 app.include_router(journal_router)
