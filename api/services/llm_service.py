@@ -77,6 +77,26 @@ async def analyze_journal_entry(
         model=settings.openai_model,
         instructions=ANALYSIS_INSTRUCTIONS,
         input=f"Journal entry:\n{entry_text}",
+        text={
+            "format": {
+                "type": "json_schema",
+                "name": "journal_analysis",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "sentiment": {
+                            "type": "string",
+                            "enum": ["positive", "negative", "neutral"],
+                        },
+                        "summary": {"type": "string"},
+                        "topics": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["sentiment", "summary", "topics"],
+                    "additionalProperties": False,
+                },
+            },
+        },
     )
 
     if response.status not in (None, "completed"):
