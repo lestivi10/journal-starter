@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -108,5 +109,10 @@ async def analyze_entry(entry_id: str, entry_service: EntryService = Depends(get
             return AnalysisResponse.model_validate(result)
     except TimeoutError, APITimeoutError:
         raise HTTPException(status_code=504, detail="Analysis timed out") from None
-    except Exception:
+    except Exception as exc:
+        logging.getLogger("journal").error(
+            "Analysis failed: entry_id=%s exception_type=%s",
+            entry_id,
+            type(exc).__name__,
+        )
         raise HTTPException(status_code=502, detail="Analysis service unavailable") from None
